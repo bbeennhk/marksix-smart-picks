@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f4f7fb">
+<title>組合產生器｜自訂注數與號碼頻率</title>
+<script>
+// Apply the saved preference before the first paint; otherwise follow the system.
+(function () {
+  let saved = null;
+  try { saved = localStorage.getItem('hi9lotto-theme'); } catch (error) {}
+  const choice = saved === 'light' || saved === 'dark' ? saved : null;
+  const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.dataset.theme = choice || (systemDark ? 'dark' : 'light');
+  if (choice) document.documentElement.dataset.themeChoice = choice;
+})();
+</script>
+<style>
+  :root {
+    color-scheme: light;
+    --page-bg: #f4f7fb; --surface: #ffffff; --ink: #1e2d45; --muted: #5b6d86;
+    --subtle: #6c7e98; --line: #dce5f1; --soft-bg: #f5f8fd; --row-hover: #f8faff;
+    --accent: #2459b8; --accent-ink: #ffffff; --accent-hover: #19468f;
+    --input-line: #c3d1e4; --hover-bg: #e8eff9; --selected-bg: #edf3fc;
+    --selected-line: #7e9ecc; --ball-ink: #234f96; --focus: #4a7bce; --focus-soft: #bfd0ec; --error: #ae3939;
+    --freq-1: #e4edfb; --freq-1-ink: #30558b; --freq-2: #c8daf4; --freq-2-ink: #244674;
+    --freq-3: #a7c3ea; --freq-3-ink: #1c3d6b; --freq-4: #2b5fab; --freq-4-ink: #ffffff;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page-bg: #0e1624; --surface: #172337; --ink: #e7eef9; --muted: #a7b7d1;
+    --subtle: #91a4c2; --line: #304461; --soft-bg: #1e2d44; --row-hover: #20314b;
+    --accent: #88b5ff; --accent-ink: #0e2346; --accent-hover: #aecbff;
+    --input-line: #465d7f; --hover-bg: #263b5b; --selected-bg: #284166;
+    --selected-line: #7098d7; --ball-ink: #d0e1ff; --focus: #88b5ff; --focus-soft: #425f8d; --error: #ffb0aa;
+    --freq-1: #243c60; --freq-1-ink: #cfdef5; --freq-2: #305581; --freq-2-ink: #e4efff;
+    --freq-3: #4775ac; --freq-3-ink: #ffffff; --freq-4: #a2c6f7; --freq-4-ink: #142f52;
+  }
+
+  body { margin: 0; background: var(--page-bg); }
+  #hi9lotto-tool {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+    color: var(--ink); background: var(--page-bg); line-height: 1.6; padding: 28px 32px 36px;
+    font-size: 14px; -webkit-font-smoothing: antialiased; min-height: 100vh;
+  }
+  #hi9lotto-tool * { box-sizing: border-box; }
+  #hi9lotto-tool [hidden] { display: none !important; }
+  #hi9lotto-tool button, #hi9lotto-tool input, #hi9lotto-tool select { font: inherit; }
+  #hi9lotto-tool button, #hi9lotto-tool select { cursor: pointer; }
+  #hi9lotto-tool button { transition: background .15s, border-color .15s; }
+  #hi9lotto-tool button:disabled { cursor: not-allowed; opacity: .4; }
+  #hi9lotto-tool :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+  #hi9lotto-tool h1, #hi9lotto-tool h2, #hi9lotto-tool p { margin: 0; }
+  #hi9lotto-tool svg { width: 18px; height: 18px; flex: none; }
+  #hi9lotto-tool .wrap { max-width: 1180px; margin: auto; }
+  #hi9lotto-tool .theme-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  #hi9lotto-tool .app-title { color: var(--ink); font-size: clamp(22px, 3vw, 26px); line-height: 1.4; font-weight: 800; letter-spacing: .2px; }
+  #hi9lotto-tool .theme-switch { display: inline-flex; gap: 3px; padding: 4px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
+  #hi9lotto-tool .theme-option { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 7px 12px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); font-size: 12px; }
+  #hi9lotto-tool .theme-option:hover { background: var(--hover-bg); }
+  #hi9lotto-tool .theme-option[aria-pressed="true"] { background: var(--selected-bg); color: var(--ink); border-color: var(--selected-line); font-weight: 650; }
+  #hi9lotto-tool .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+  #hi9lotto-tool .metric { padding: 18px 22px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  #hi9lotto-tool .metric-label { color: var(--muted); font-size: 12px; }
+  #hi9lotto-tool .metric-value { margin-top: 3px; display: flex; gap: 8px; align-items: baseline; font-variant-numeric: tabular-nums; }
+  #hi9lotto-tool .metric-value strong { font-size: 29px; line-height: 1.35; letter-spacing: -.8px; font-weight: 650; }
+  #hi9lotto-tool .metric-value span { font-size: 12px; color: var(--muted); }
+  #hi9lotto-tool .layout { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 24px; align-items: start; }
+  #hi9lotto-tool .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  #hi9lotto-tool .settings { padding: 24px; }
+  #hi9lotto-tool h2 { font-size: 17px; font-weight: 700; letter-spacing: -.2px; }
+  #hi9lotto-tool .section-index { color: var(--subtle); font-size: 11px; font-weight: 500; margin-right: 9px; font-variant-numeric: tabular-nums; }
+  #hi9lotto-tool .subtext { color: var(--muted); font-size: 12px; margin-top: 5px; }
+  #hi9lotto-tool .field-label { padding: 0; margin-bottom: 10px; font-size: 12px; font-weight: 700; display: block; }
+  #hi9lotto-tool .generation-info { margin: 20px 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--soft-bg); }
+  #hi9lotto-tool .generation-info strong { display: block; font-size: 13px; font-weight: 650; }
+  #hi9lotto-tool .generation-info span { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); }
+  #hi9lotto-tool .stepper { display: flex; border: 1px solid var(--input-line); border-radius: 8px; overflow: hidden; height: 48px; }
+  #hi9lotto-tool .stepper button { width: 44px; flex: none; background: var(--soft-bg); border: 0; color: var(--ink); font-size: 20px; }
+  #hi9lotto-tool .stepper button:hover:not(:disabled) { background: var(--hover-bg); }
+  #hi9lotto-tool .stepper input { background: var(--surface); width: 100%; min-width: 0; text-align: center; font-size: 20px; font-weight: 650; color: var(--ink); border: 0; border-inline: 1px solid var(--line); border-radius: 0; appearance: textfield; -moz-appearance: textfield; }
+  #hi9lotto-tool .stepper input::-webkit-inner-spin-button, #hi9lotto-tool .stepper input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  #hi9lotto-tool .stepper:focus-within { outline: 3px solid var(--focus-soft); outline-offset: 2px; }
+  #hi9lotto-tool .stepper input:focus { outline: none; }
+  #hi9lotto-tool .presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
+  #hi9lotto-tool .preset { background: var(--surface); border: 1px solid var(--line); border-radius: 5px; font-size: 12px; padding: 5px; color: var(--muted); }
+  #hi9lotto-tool .preset[aria-pressed="true"] { color: var(--accent); background: var(--selected-bg); border-color: var(--selected-line); font-weight: 650; }
+  #hi9lotto-tool .hint { margin-top: 9px; font-size: 11px; color: var(--muted); }
+  #hi9lotto-tool .error { color: var(--error); font-size: 12px; margin-top: 8px; }
+  #hi9lotto-tool .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 13px; border: 1px solid var(--line); border-radius: 7px; font-weight: 650; font-size: 12px; background: var(--surface); color: var(--ink); white-space: nowrap; }
+  #hi9lotto-tool .btn:hover:not(:disabled) { background: var(--hover-bg); border-color: var(--input-line); }
+  #hi9lotto-tool .btn-primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  #hi9lotto-tool .btn-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+  #hi9lotto-tool .generate { width: 100%; margin-top: 22px; padding: 12px; font-size: 14px; }
+  #hi9lotto-tool .settings-foot { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 16px; font-size: 11px; color: var(--muted); }
+  #hi9lotto-tool .content { display: grid; gap: 20px; min-width: 0; }
+  #hi9lotto-tool .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 24px; }
+  #hi9lotto-tool .actions { display: flex; gap: 7px; flex-wrap: wrap; }
+  #hi9lotto-tool .empty { min-height: 280px; display: flex; align-items: center; justify-content: center; flex-direction: column; padding: 36px 20px; text-align: center; border-top: 1px solid var(--line); }
+  #hi9lotto-tool .empty-balls { display: flex; gap: 7px; margin-bottom: 20px; }
+  #hi9lotto-tool .empty-balls span { display: grid; place-items: center; width: 33px; height: 33px; border: 1px solid var(--line); border-radius: 50%; color: var(--subtle); background: var(--soft-bg); font-size: 13px; }
+  #hi9lotto-tool .empty strong { font-size: 15px; font-weight: 600; }
+  #hi9lotto-tool .empty p { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  #hi9lotto-tool .table-scroll { overflow-x: auto; }
+  #hi9lotto-tool table { border-collapse: collapse; width: 100%; table-layout: fixed; font-variant-numeric: tabular-nums; }
+  #hi9lotto-tool caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  #hi9lotto-tool th { background: var(--soft-bg); color: var(--muted); font-size: 11px; font-weight: 550; padding: 10px 4px; border-block: 1px solid var(--line); letter-spacing: .5px; }
+  #hi9lotto-tool td { text-align: center; padding: 10px 4px; border-bottom: 1px solid var(--line); }
+  #hi9lotto-tool th:first-child { width: 75px; }
+  #hi9lotto-tool td:first-child { color: var(--muted); font-size: 12px; }
+  #hi9lotto-tool tbody tr:hover { background: var(--row-hover); }
+  #hi9lotto-tool .ball { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; background: var(--selected-bg); color: var(--ball-ink); font-size: 14px; font-weight: 650; }
+  #hi9lotto-tool .pagination { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 24px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
+  #hi9lotto-tool .page-controls { display: flex; align-items: center; gap: 8px; }
+  #hi9lotto-tool select { padding: 6px 8px; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font-size: 12px; max-width: 100%; }
+  #hi9lotto-tool .page-btn { background: var(--surface); border: 1px solid var(--line); color: var(--ink); width: 28px; height: 28px; border-radius: 5px; font-size: 16px; line-height: 1; }
+  #hi9lotto-tool .result-note { margin: 0 24px 16px; padding: 10px 12px; border-radius: 6px; background: var(--soft-bg); font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+  #hi9lotto-tool .result-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); padding: 10px 24px; min-height: 47px; }
+  #hi9lotto-tool .status { color: var(--accent); font-size: 11px; }
+  #hi9lotto-tool .clear { border: 0; background: transparent; color: var(--muted); font-size: 11px; padding: 4px 0; flex: none; }
+  #hi9lotto-tool .clear:hover:not(:disabled) { color: var(--ink); text-decoration: underline; }
+  #hi9lotto-tool .frequency-body { padding: 0 24px 22px; }
+  #hi9lotto-tool .frequency-summary { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 11px 0 16px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); flex-wrap: wrap; }
+  #hi9lotto-tool .legend { display: flex; align-items: center; gap: 5px; font-size: 10px; }
+  #hi9lotto-tool .swatch { width: 12px; height: 12px; border-radius: 3px; background: var(--soft-bg); border: 1px solid var(--line); }
+  #hi9lotto-tool .swatch.low { background: var(--freq-1); }
+  #hi9lotto-tool .swatch.mid { background: var(--freq-3); }
+  #hi9lotto-tool .swatch.high { background: var(--freq-4); border-color: var(--freq-4); }
+  #hi9lotto-tool .frequency-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 7px; list-style: none; padding: 0; margin: 0; }
+  #hi9lotto-tool .frequency-item { padding: 9px 3px 8px; border-radius: 7px; text-align: center; background: var(--soft-bg); color: var(--subtle); border: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  #hi9lotto-tool .frequency-item strong { display: block; font-size: 16px; line-height: 1.4; font-weight: 650; }
+  #hi9lotto-tool .frequency-item span { display: block; font-size: 10px; margin-top: 2px; }
+  #hi9lotto-tool .frequency-item[data-level="1"] { background: var(--freq-1); color: var(--freq-1-ink); border-color: var(--line); }
+  #hi9lotto-tool .frequency-item[data-level="2"] { background: var(--freq-2); color: var(--freq-2-ink); border-color: var(--line); }
+  #hi9lotto-tool .frequency-item[data-level="3"] { background: var(--freq-3); color: var(--freq-3-ink); border-color: var(--line); }
+  #hi9lotto-tool .frequency-item[data-level="4"] { background: var(--freq-4); color: var(--freq-4-ink); border-color: var(--freq-4); }
+  #hi9lotto-tool .frequency-note { margin-top: 15px; color: var(--muted); font-size: 11px; }
+  @media (max-width: 950px) {
+    #hi9lotto-tool { padding-inline: 20px; }
+    #hi9lotto-tool .layout { grid-template-columns: 250px minmax(0, 1fr); gap: 16px; }
+    #hi9lotto-tool .settings { padding: 20px; }
+    #hi9lotto-tool .panel-head { flex-wrap: wrap; padding: 20px; }
+    #hi9lotto-tool .frequency-body { padding-inline: 20px; }
+    #hi9lotto-tool .pagination, #hi9lotto-tool .result-foot { padding-inline: 20px; }
+  }
+  @media (max-width: 720px) {
+    #hi9lotto-tool .layout { grid-template-columns: 1fr; }
+    #hi9lotto-tool .metrics { gap: 8px; margin-bottom: 16px; }
+    #hi9lotto-tool .metric { padding: 14px 12px; }
+    #hi9lotto-tool .metric-value { gap: 5px; }
+    #hi9lotto-tool .metric-value strong { font-size: 25px; }
+    #hi9lotto-tool .metric-label, #hi9lotto-tool .metric-value span { font-size: 11px; }
+    #hi9lotto-tool .presets { grid-template-columns: repeat(6, 1fr); }
+    #hi9lotto-tool .settings-foot { margin-top: 16px; padding-top: 12px; }
+  }
+  @media (max-width: 400px) {
+    #hi9lotto-tool { padding-inline: 12px; }
+    #hi9lotto-tool .settings, #hi9lotto-tool .panel-head { padding: 16px; }
+    #hi9lotto-tool .frequency-body { padding-inline: 16px; }
+    #hi9lotto-tool .frequency-grid { gap: 4px; }
+    #hi9lotto-tool .frequency-item strong { font-size: 14px; }
+    #hi9lotto-tool .ball { width: 28px; height: 28px; font-size: 12px; }
+    #hi9lotto-tool th:first-child { width: 44px; }
+    #hi9lotto-tool td { padding: 9px 2px; }
+    #hi9lotto-tool .metric { padding-inline: 9px; }
+    #hi9lotto-tool .metric-value strong { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+<main id="hi9lotto-tool" aria-label="號碼組合產生器">
+<div class="wrap">
+  <div class="theme-toolbar"><h1 class="app-title">六合彩聰明組合</h1><div class="theme-switch" role="group" aria-label="日間／夜間主題">
+    <button id="hi9lotto-theme-light" class="theme-option" type="button" data-theme-option="light" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>日間</button>
+    <button id="hi9lotto-theme-dark" class="theme-option" type="button" data-theme-option="dark" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M20.5 14.3A9 9 0 0 1 9.7 3.5a9 9 0 1 0 10.8 10.8Z"/></svg>夜間</button>
+  </div></div>
+  <section class="metrics" aria-label="本次結果摘要">
+    <div class="metric"><div class="metric-label">本次組合</div><div class="metric-value"><strong id="hi9lotto-total">0</strong><span>注</span></div></div>
+    <div class="metric"><div class="metric-label">已用號碼</div><div class="metric-value"><strong id="hi9lotto-used">0</strong><span>/ 49</span></div></div>
+    <div class="metric"><div class="metric-label">總出現次數</div><div class="metric-value"><strong id="hi9lotto-occurrences">0</strong><span>次</span></div></div>
+  </section>
+  <div class="layout">
+    <aside class="panel settings" aria-labelledby="settings-title">
+      <h2 id="settings-title"><span class="section-index">01</span>組合設定</h2>
+      <p class="subtext">自訂注數，平均分配 1–49 號。</p>
+      <form id="hi9lotto-form" novalidate>
+        <p class="generation-info"><strong>不重複組合</strong><span>每注 6 個不同號碼，整注不重複。各號碼的出現次數最多相差 1 次。</span></p>
+        <label class="field-label" for="hi9lotto-count">輸出注數</label>
+        <div class="stepper"><button id="hi9lotto-minus" type="button" aria-label="減少一注">−</button><input id="hi9lotto-count" type="number" min="1" max="1000" step="1" value="8" inputmode="numeric" required aria-describedby="hi9lotto-count-hint hi9lotto-error"><button id="hi9lotto-plus" type="button" aria-label="增加一注">+</button></div>
+        <div class="presets" aria-label="快速選擇注數">
+          <button class="preset" type="button" data-count="5" aria-pressed="false">5 注</button><button class="preset" type="button" data-count="8" aria-pressed="true">8 注</button><button class="preset" type="button" data-count="10" aria-pressed="false">10 注</button><button class="preset" type="button" data-count="20" aria-pressed="false">20 注</button><button class="preset" type="button" data-count="50" aria-pressed="false">50 注</button><button class="preset" type="button" data-count="100" aria-pressed="false">100 注</button>
+        </div>
+        <p class="hint" id="hi9lotto-count-hint">可輸入 1–1,000 注，每注號碼由小至大排列。</p>
+        <p class="error" id="hi9lotto-error" role="alert" hidden></p>
+        <button class="btn btn-primary generate" id="hi9lotto-generate" type="submit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7h3c4 0 6 10 10 10h3M17 14l3 3-3 3M4 17h3c1.5 0 3-2 4-4m2-2c1-2 2.5-4 4-4h3M17 4l3 3-3 3"/></svg>產生組合</button>
+      </form>
+      <p class="settings-foot">每次產生一份全新結果。匯出與複製均包含本次全部組合。</p>
+    </aside>
+    <div class="content">
+      <section class="panel" aria-labelledby="results-title">
+        <div class="panel-head">
+          <div><h2 id="results-title"><span class="section-index">02</span>組合結果</h2><p class="subtext" id="hi9lotto-result-meta">準備好後，按「產生組合」開始。</p></div>
+          <div class="actions">
+            <button class="btn" id="hi9lotto-copy" type="button" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 5V3H3v14h2"/></svg>複製結果</button>
+            <button class="btn btn-primary" id="hi9lotto-export" type="button" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 15v5h16v-5"/></svg>匯出 CSV</button>
+          </div>
+        </div>
+        <div class="empty" id="hi9lotto-empty"><div class="empty-balls" aria-hidden="true"><span>?</span><span>?</span><span>?</span><span>?</span><span>?</span><span>?</span></div><strong>下一組，由這裡開始</strong><p>設定輸出注數，即可查看組合及號碼分布。</p></div>
+        <div id="hi9lotto-results" hidden>
+          <div class="table-scroll"><table><caption>本次產生的組合，每注六個號碼</caption><thead><tr><th scope="col">注數</th><th scope="col">N1</th><th scope="col">N2</th><th scope="col">N3</th><th scope="col">N4</th><th scope="col">N5</th><th scope="col">N6</th></tr></thead><tbody id="hi9lotto-rows"></tbody></table></div>
+          <nav class="pagination" aria-label="組合分頁"><span id="hi9lotto-page-summary"></span><div class="page-controls"><select id="hi9lotto-page-size" aria-label="每頁顯示注數"><option value="10">10 注 / 頁</option><option value="25">25 注 / 頁</option><option value="50">50 注 / 頁</option><option value="100">100 注 / 頁</option></select><button class="page-btn" type="button" id="hi9lotto-prev" aria-label="上一頁">‹</button><span id="hi9lotto-page-position"></span><button class="page-btn" type="button" id="hi9lotto-next" aria-label="下一頁">›</button></div></nav>
+          <p class="result-note" id="hi9lotto-remaining"></p>
+        </div>
+        <div class="result-foot"><p class="status" id="hi9lotto-status" role="status" aria-live="polite" aria-atomic="true">尚未產生組合</p><button class="clear" id="hi9lotto-reset" type="button" disabled>清除結果</button></div>
+      </section>
+      <section class="panel" aria-labelledby="frequency-title">
+        <div class="panel-head"><div><h2 id="frequency-title"><span class="section-index">03</span>出現頻率</h2><p class="subtext">本次全部組合中，各號碼的出現次數。</p></div><select id="hi9lotto-frequency-sort" aria-label="號碼頻率排序"><option value="number">按號碼排序</option><option value="frequency">按次數排序</option></select></div>
+        <div class="frequency-body">
+          <div class="frequency-summary"><span id="hi9lotto-frequency-summary">產生組合後，即可查看號碼頻率。</span><div class="legend" aria-hidden="true">少 <span class="swatch"></span><span class="swatch low"></span><span class="swatch mid"></span><span class="swatch high"></span> 多</div></div>
+          <ol class="frequency-grid" id="hi9lotto-frequency" aria-label="1 至 49 號出現次數"></ol>
+          <p class="frequency-note">色階表示本次結果中的出現次數；此統計並非歷史開獎頻率。</p>
+        </div>
+      </section>
+    </div>
+  </div>
+  <noscript><p>請啟用 JavaScript，以使用組合產生、頻率統計和 CSV 匯出功能。</p></noscript>
+</div>
+</main>
+<script>
+(function () {
+  'use strict';
+  const root = document.getElementById('hi9lotto-tool');
+  const $ = (id) => root.querySelector('#hi9lotto-' + id);
+  const themeButtons = root.querySelectorAll('[data-theme-option]');
+  const systemTheme = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  let themeChoice = document.documentElement.dataset.themeChoice || null;
+
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    themeButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.themeOption === theme)));
+    document.querySelector('meta[name="theme-color"]').content = getComputedStyle(document.documentElement).getPropertyValue('--page-bg').trim();
+  }
+
+  themeButtons.forEach((button) => button.addEventListener('click', () => {
+    themeChoice = button.dataset.themeOption;
+    applyTheme(themeChoice);
+    try { localStorage.setItem('hi9lotto-theme', themeChoice); } catch (error) {}
+  }));
+  if (systemTheme) systemTheme.addEventListener('change', (event) => {
+    if (!themeChoice) applyTheme(event.matches ? 'dark' : 'light');
+  });
+  applyTheme(themeChoice || (systemTheme && systemTheme.matches ? 'dark' : 'light'));
+
+  const MAX_NUMBER = 49;
+  const NUMBERS_PER_SET = 6;
+  const MAX_SETS = 1000;
+  const HEADERS = ['注數', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6'];
+  const presets = root.querySelectorAll('[data-count]');
+  let sets = [];
+  let frequencies = Array(MAX_NUMBER).fill(0);
+  let page = 1;
+  let copyPending = false;
+
+  const pad = (number) => String(number).padStart(2, '0');
+  const announce = (message) => { $('status').textContent = message; };
+
+  function clearError() {
+    $('error').hidden = true;
+    $('error').textContent = '';
+    $('count').removeAttribute('aria-invalid');
+  }
+
+  function updateSettings() {
+    const max = MAX_SETS;
+    const count = $('count').valueAsNumber;
+    $('count').max = String(max);
+    $('count-hint').textContent = '可輸入 1–' + max.toLocaleString('en-US') + ' 注，每注號碼由小至大排列。';
+    $('minus').disabled = Number.isFinite(count) && count <= 1;
+    $('plus').disabled = Number.isFinite(count) && count >= max;
+    presets.forEach((button) => {
+      button.disabled = Number(button.dataset.count) > max;
+      button.setAttribute('aria-pressed', String(Number(button.dataset.count) === count));
+    });
+    clearError();
+    if (sets.length) {
+      announce(count !== sets.length
+        ? '設定已更改，按「產生組合」更新結果。'
+        : '目前顯示 ' + sets.length + ' 注完整結果。');
+    }
+  }
+
+  // Rejection sampling avoids modulo bias when Web Crypto is available.
+  function randomIndex(limit) {
+    if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
+      const buffer = new Uint32Array(1);
+      const ceiling = Math.floor(4294967296 / limit) * limit;
+      do { globalThis.crypto.getRandomValues(buffer); } while (buffer[0] >= ceiling);
+      return buffer[0] % limit;
+    }
+    return Math.floor(Math.random() * limit);
+  }
+
+  function shuffledNumbers() {
+    const numbers = Array.from({ length: MAX_NUMBER }, (_, index) => index + 1);
+    for (let i = numbers.length - 1; i > 0; i--) {
+      const j = randomIndex(i + 1);
+      [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
+    }
+    return numbers;
+  }
+
+  function buildSets(count) {
+    // Pick the six least-used numbers, breaking equal-count ties randomly.
+    // After every row, all 49 frequencies remain floor(6 * rows / 49) or ceil(...).
+    // A duplicate can be forced by the remaining least-used numbers, so restart
+    // the batch on collision instead of relaxing the balance or uniqueness rules.
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const output = [];
+      const seen = new Set();
+      const usage = Array(MAX_NUMBER + 1).fill(0);
+      for (let row = 0; row < count; row++) {
+        const combo = shuffledNumbers()
+          .sort((a, b) => usage[a] - usage[b])
+          .slice(0, NUMBERS_PER_SET)
+          .sort((a, b) => a - b);
+        const key = combo.join(',');
+        if (seen.has(key)) break;
+        seen.add(key);
+        output.push(combo);
+        combo.forEach((number) => usage[number]++);
+      }
+      if (output.length === count) return output;
+    }
+    throw new Error('Unable to generate balanced unique combinations');
+  }
+
+  function renderPage() {
+    const pageSize = Number($('page-size').value);
+    const totalPages = Math.max(1, Math.ceil(sets.length / pageSize));
+    page = Math.min(Math.max(1, page), totalPages);
+    const start = (page - 1) * pageSize;
+    // Only internally generated integers are inserted into the table.
+    $('rows').innerHTML = sets.slice(start, start + pageSize).map((combo, index) =>
+      '<tr><td>' + (start + index + 1) + '</td>' + combo.map((number) =>
+        '<td><span class="ball">' + pad(number) + '</span></td>').join('') + '</tr>').join('');
+    $('page-summary').textContent = sets.length ? '顯示 ' + (start + 1) + '–' + Math.min(start + pageSize, sets.length) + '，共 ' + sets.length + ' 注' : '';
+    $('page-position').textContent = page + ' / ' + totalPages;
+    $('prev').disabled = page === 1;
+    $('next').disabled = page === totalPages;
+  }
+
+  function renderFrequency() {
+    const highest = Math.max(...frequencies);
+    const lowest = Math.min(...frequencies);
+    const items = frequencies.map((count, index) => ({ number: index + 1, count }));
+    if ($('frequency-sort').value === 'frequency') items.sort((a, b) => b.count - a.count || a.number - b.number);
+    $('frequency').innerHTML = items.map(({ number, count }) => {
+      const level = count === 0 ? 0 : Math.ceil(count / highest * 4);
+      return '<li class="frequency-item" data-number="' + number + '" data-count="' + count + '" data-level="' + level + '" aria-label="號碼 ' + number + '：出現 ' + count + ' 次"><strong aria-hidden="true">' + pad(number) + '</strong><span aria-hidden="true">' + count + ' 次</span></li>';
+    }).join('');
+    if (!sets.length) {
+      $('frequency-summary').textContent = '產生組合後，即可查看號碼頻率。';
+    } else {
+      $('frequency-summary').textContent = highest === lowest
+        ? '平均分配 · 每個號碼均為 ' + highest + ' 次'
+        : '平均分配 · 每個號碼 ' + lowest + '–' + highest + ' 次 · 最多相差 ' + (highest - lowest) + ' 次';
+    }
+  }
+
+  function renderResults() {
+    const hasResults = sets.length > 0;
+    frequencies = Array(MAX_NUMBER).fill(0);
+    sets.forEach((combo) => combo.forEach((number) => frequencies[number - 1]++));
+    $('total').textContent = sets.length.toLocaleString('en-US');
+    $('used').textContent = frequencies.filter((count) => count > 0).length;
+    $('occurrences').textContent = (sets.length * NUMBERS_PER_SET).toLocaleString('en-US');
+    $('empty').hidden = hasResults;
+    $('results').hidden = !hasResults;
+    $('copy').disabled = !hasResults || copyPending;
+    $('export').disabled = !hasResults;
+    $('reset').disabled = !hasResults;
+    const unused = frequencies.flatMap((count, index) => count === 0 ? [index + 1] : []);
+    $('remaining').textContent = unused.length ? '未出現號碼（' + unused.length + ' 個）：' + unused.map(pad).join('、') : '本次組合已涵蓋全部 49 個號碼。';
+    renderPage();
+    renderFrequency();
+  }
+
+  function generate(event) {
+    event.preventDefault();
+    const count = $('count').valueAsNumber;
+    const max = MAX_SETS;
+    if (!Number.isInteger(count) || count < 1 || count > max) {
+      $('error').textContent = '請輸入 1 至 ' + max.toLocaleString('en-US') + ' 之間的整數注數。';
+      $('error').hidden = false;
+      $('count').setAttribute('aria-invalid', 'true');
+      $('count').focus();
+      return;
+    }
+    clearError();
+    try {
+      const nextSets = buildSets(count);
+      sets = nextSets;
+      page = 1;
+      renderResults();
+      const time = new Date().toLocaleTimeString('zh-HK', { hour: '2-digit', minute: '2-digit', hour12: false });
+      $('result-meta').textContent = '不重複組合 · ' + count + ' 注 · ' + time + ' 產生';
+      announce('已產生 ' + count + ' 注，頻率統計已更新。');
+    } catch (error) {
+      announce('產生失敗，請再試一次。');
+    }
+  }
+
+  // Export and copy use all generated rows, independently of pagination.
+  function delimitedText(separator) {
+    return [HEADERS.join(separator), ...sets.map((combo, index) => [index + 1, ...combo].join(separator))].join('\r\n') + '\r\n';
+  }
+
+  function exportCSV() {
+    if (!sets.length) return;
+    const blob = new Blob(['\uFEFF' + delimitedText(',')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    const now = new Date();
+    const stamp = now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + '_' + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+    anchor.href = url;
+    anchor.download = '聰明組合_' + sets.length + '注_' + stamp + '.csv';
+    anchor.hidden = true;
+    root.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    announce('已開始下載 CSV，共 ' + sets.length + ' 注。');
+  }
+
+  function fallbackCopy(text) {
+    const field = document.createElement('textarea');
+    const focused = document.activeElement;
+    field.value = text;
+    field.setAttribute('readonly', '');
+    field.style.cssText = 'position:fixed;left:-9999px;top:0;font-size:16px';
+    root.appendChild(field);
+    try {
+      field.select();
+      if (!document.execCommand('copy')) throw new Error('Copy denied');
+    } finally {
+      field.remove();
+      if (focused && typeof focused.focus === 'function') focused.focus({ preventScroll: true });
+    }
+  }
+
+  async function copyResults() {
+    if (!sets.length || copyPending) return;
+    const text = delimitedText('\t');
+    const copiedCount = sets.length;
+    const copiedSets = sets;
+    copyPending = true;
+    $('copy').disabled = true;
+    try {
+      try {
+        if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('Clipboard unavailable');
+        await navigator.clipboard.writeText(text);
+      } catch (error) { fallbackCopy(text); }
+      if (sets === copiedSets) announce('已複製全部 ' + copiedCount + ' 注，可直接貼入試算表。');
+    } catch (error) {
+      if (sets === copiedSets) announce('瀏覽器不允許複製，請改用「匯出 CSV」或手動選取表格。');
+    } finally {
+      copyPending = false;
+      $('copy').disabled = !sets.length;
+    }
+  }
+
+  $('form').addEventListener('submit', generate);
+  $('count').addEventListener('input', updateSettings);
+  presets.forEach((button) => button.addEventListener('click', () => {
+    $('count').value = button.dataset.count;
+    updateSettings();
+  }));
+  function stepCount(step) {
+    const count = $('count').valueAsNumber;
+    $('count').value = String(Number.isFinite(count) ? Math.min(MAX_SETS, Math.max(1, Math.trunc(count) + step)) : 1);
+    updateSettings();
+  }
+  $('minus').addEventListener('click', () => stepCount(-1));
+  $('plus').addEventListener('click', () => stepCount(1));
+  $('export').addEventListener('click', exportCSV);
+  $('copy').addEventListener('click', copyResults);
+  $('prev').addEventListener('click', () => { page--; renderPage(); });
+  $('next').addEventListener('click', () => { page++; renderPage(); });
+  $('page-size').addEventListener('change', () => { page = 1; renderPage(); });
+  $('frequency-sort').addEventListener('change', renderFrequency);
+  $('reset').addEventListener('click', () => {
+    sets = [];
+    page = 1;
+    clearError();
+    renderResults();
+    $('result-meta').textContent = '準備好後，按「產生組合」開始。';
+    announce('已清除結果，可重新設定並產生組合。');
+    $('generate').focus();
+  });
+  updateSettings();
+  renderResults();
+})();
+</script>
+</body>
+</html>
